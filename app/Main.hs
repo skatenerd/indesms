@@ -26,21 +26,34 @@ import System.Environment (getEnv)
 
 data Stations = Stations { features :: [Station] } deriving (Show, Eq, Generic)
 data Station = Station { geometry :: Geometry, properties :: Properties } deriving (Show, Eq, Generic)
+
+-- this is lng/lat vs lat/lng
+-- this data structure should be more descriptive, and contain a custom fromJSON
 data Geometry = Geometry { coordinates :: (Double, Double) } deriving (Show, Eq, Generic)
+
 data Properties = Properties { addressStreet :: String, bikesAvailable :: Int, docksAvailable :: Int } deriving (Show, Eq, Generic)
 instance Aeson.FromJSON Stations
 instance Aeson.FromJSON Station
 instance Aeson.FromJSON Geometry
 instance Aeson.FromJSON Properties
 
--- *Main Lib Network.Wreq Data.Aeson Control.Lens>
---
-
-cartesianDistance (x1, y1) (x2, y2) = sqrt (((x1 - x2) ** 2) + ((y1 - y2) ** 2))
+-- in meters
+physicalDistance (lat1Deg, lng1Deg) (lat2Deg, lng2Deg) =
+  let latDeltaDeg = (lat1Deg - lat2Deg)
+      lngDeltaDeg = (lng1Deg - lng2Deg)
+      latDeltaRad = toRadians latDeltaDeg
+      lngDeltaRad = toRadians lngDeltaDeg
+      lat1Rad = toRadians lat1Deg
+      lat2Rad = toRadians lat2Deg
+      toRadians x = (2 * pi) * (x / 360)
+      haversineBody = ((sin (latDeltaRad / 2)) ** 2) + ((cos lat1Rad) * (cos lat2Rad) * ((lngDeltaRad / 2) ** 2))
+      c = 2 * (atan2 (sqrt haversineBody) (sqrt (1 - haversineBody)))
+      earthRadius = 6371000
+   in earthRadius * c
 
 stationDistance userLocation station =
-  let stationLocation = coordinates $ geometry station
-  in cartesianDistance userLocation stationLocation
+  let (stationLng, stationLat) = coordinates $ geometry station
+  in physicalDistance userLocation (stationLat, stationLng)
 
 showStation station =
   let address = addressStreet (properties station)
@@ -49,10 +62,10 @@ showStation station =
   in "ADDRESS: " ++ address ++ "\n BIKES: " ++ bikes ++ "\n EMPTY SLOTS: " ++ docks ++ "\n"
 
 getAnswer stationData (Left _) = "We're sorry, we encounterd an error"
-getAnswer stationData (Right (userFoo, userBar)) =
+getAnswer stationData (Right uesrLocation) =
   let stations = features stationData
       -- lol is it lat/lng or lng/lat?
-      sorted = DL.sortOn (stationDistance (userBar, userFoo)) stations
+      sorted = DL.sortOn (stationDistance uesrLocation) stations
   in "NEAREST INDEGO STATIONS ARE:\n" ++ (concatMap showStation $ take 3 sorted)
 
 main :: IO ()
